@@ -1,7 +1,8 @@
 
 ## 1. References
 
-[1] FinRL: A Deep Reinforcement Learning Library for Automated Stock Trading in Quantitative Finance
+[1] Liu, X. Y., Yang, H., Chen, Q., Zhang, R., Yang, L., Xiao, B., & Wang, C. D. (2020). FinRL: A deep reinforcement learning library for automated stock trading in quantitative finance. arXiv preprint arXiv:2011.09607.
+
 [2] Liu, X. Y., Xiong, Z., Zhong, S., Yang, H., & Walid, A. (2018). Practical deep reinforcement learning approach for stock trading. arXiv preprint arXiv:1811.07522.
 
 
