@@ -2,9 +2,6 @@ from typing import List, Union
 import logging
 import datetime
 
-
-
-
 class DataPoint:
     #{"v": 7286, "vw": 13.2226, "o": 13.23, "c": 13.2215, "h": 13.23, "l": 13.21, "t": 1728658800000, "n": 29}
     def __init__(self, data: dict):
@@ -32,6 +29,9 @@ class DataPoint:
     
     def __repr__(self):
         return str(self)
+    
+    def price(self):
+        return self.o
 
 class DataSet:
     def __init__(self, name: str, data_points: Union[List[DataPoint], List[dict]] = []):
@@ -73,6 +73,9 @@ class DataSet:
     
     def __repr__(self):
         return str(self)
+
+    def __getitem__(self, key):
+        return self.data_points[key]
     
     def __len__(self):
         return len(self.data_points)
