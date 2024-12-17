@@ -67,7 +67,7 @@ The state x is passed to the recurrent network (can be of type RNN, LSTM or GRU)
 
 ## Error Metric
 
-As predicting future stock prices can prove to be quite challenging, I did set the goal of the trading bot to achieve any amount of profit, but rather want the agent to retain at least the same porfolio value as at the beginning in order to minimize risks. 
+As predicting future stock prices can prove to be quite challenging, I did not set the goal of the trading bot to achieve any amount of profit, but rather want the agent to retain at least the same porfolio value as at the beginning in order to minimize risks. 
 
 Sadly, the agent does not yet achieve this goal. However, I believe more training time and further random search might improve the models to achieve the desired results. 
 
