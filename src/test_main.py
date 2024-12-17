@@ -52,15 +52,20 @@ def test_environment_run_does_not_crash():
         STD_RUN_DURATION=10,
         START_BALANCE=1000,
         MAX_BUY_LIMIT=10,
-        CONTINUOUS_MODEL=False,
+        CONTINUOUS_MODEL=True,
         TRUNCATION_PENALTY=0,
         STOCK_HOLDING_REWARD=1
     )
 
-    datasets = get_datasets()
+    datasets = list(glob.glob(os.path.join("data", "pickles", "*.pkl")))
+
+    datasets = list([extract_from_pickle(dataset) for dataset in datasets])
+
+    assert all(isinstance(dataset, DataSet) for dataset in datasets)
+
 
     gym.register("MarketEnv-v0", entry_point=MarketEnv)
-    env = gym.make("MarketEnv-v0", datasets=datasets, config=env_configs)
+    env = gym.make("MarketEnv-v0", datasets=datasets, config=env_configs, disable_env_checker=True)
 
     try:
         env.reset(seed=44)
