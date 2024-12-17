@@ -4,20 +4,76 @@ import torch
 from torch import nn
 from torch.utils.data import IterableDataset
 from torch.distributions import Categorical, Normal
+import logging
 
 # Source: https://github.com/sidhantls/ppo_lightning
+
+class RNNModel(nn.Module):
+    def __init__(self, rec_input_size, fc1_input_size, rec_hidden_size, fc1_hidden_sizes, fc2_hidden_sizes, rec_num_layers=2, rec_nonlinearity="tanh", fc1_nonlinearity="tanh", fc2_nonlinearity="tanh", rnn_type='RNN', dropout=0.0):
+        super(RNNModel, self).__init__()
+
+        # Choose RNN type: RNN, LSTM, or GRU
+        if rnn_type == 'RNN':
+            self.rnn = nn.RNN(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+        elif rnn_type == 'LSTM':
+            self.rnn = nn.LSTM(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+        elif rnn_type == 'GRU':
+            self.rnn = nn.GRU(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+        else:
+            raise ValueError(f"Unsupported RNN type: {rnn_type}")
+        
+        if fc1_nonlinearity == "tanh":
+            self.fc1_nonlinearity = nn.Tanh
+        elif fc1_nonlinearity == "sigmoid":
+            self.fc1_nonlinearity = nn.Sigmoid
+        elif fc1_nonlinearity == "relu":
+            self.fc1_nonlinearity = nn.ReLU
+        else:
+            raise ValueError(f"Unsupported non-recurrent nonlinearity: {fc1_nonlinearity}")
+        
+        if fc2_nonlinearity == "tanh":
+            self.fc2_nonlinearity = nn.Tanh
+        elif fc2_nonlinearity == "sigmoid":
+            self.fc2_nonlinearity = nn.Sigmoid
+        elif fc2_nonlinearity == "relu":
+            self.fc2_nonlinearity = nn.ReLU
+        else:
+            raise ValueError(f"Unsupported non-recurrent nonlinearity: {fc1_nonlinearity}")
+
+        fc1_layers = []
+        
+        fc1_layers.append(nn.Linear(rec_hidden_size + fc1_input_size, fc1_hidden_sizes[0]))
+        fc1_layers.append(self.fc1_nonlinearity())
+
+        for i in range(len(fc1_hidden_sizes)-1):
+            fc1_layers.append(nn.Linear(fc1_hidden_sizes[i], fc1_hidden_sizes[i+1]))
+            fc1_layers.append(self.fc1_nonlinearity())
+
+        nn.Linear(rec_hidden_size + fc1_hidden_sizes[-1], fc2_hidden_sizes[0])
+        self.fc1 = nn.Sequential(*fc1_layers)
+
+        fc2_layers = []
+
+        for i in range(fc2_hidden_sizes - 1):
+            fc2_layers.append(nn.Linear(fc2_hidden_sizes[i], fc2_hidden_sizes[i+1]))
+            fc2_layers.append(self.fc2_nonlinearity())
+        
+        fc2_layers.append(nn.Linear(fc2_hidden_sizes[-1], 1))
+
 
 def create_mlp(input_shape: Tuple[int], n_actions: int, hidden_sizes: list = [128, 128]):
     """
     Simple Multi-Layer Perceptron network
     """
+
+    logging.debug(f"create_mlp called with {input_shape}, {n_actions}, {hidden_sizes}")
     net_layers = []
-    net_layers.append(nn.Linear(input_shape[0], hidden_sizes[0]))
-    net_layers.append(nn.ReLU())
+    net_layers.append(nn.Linear(input_shape, hidden_sizes[0]))
+    net_layers.append(nn.Tanh())
 
     for i in range(len(hidden_sizes)-1):
         net_layers.append(nn.Linear(hidden_sizes[i], hidden_sizes[i+1]))
-        net_layers.append(nn.ReLU())
+        net_layers.append(nn.Tanh())
     net_layers.append(nn.Linear(hidden_sizes[-1], n_actions))
 
     return nn.Sequential(*net_layers)

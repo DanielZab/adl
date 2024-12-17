@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 import numpy as np
 import gymnasium as gym
 from dataset_container import DataSet, DataPoint
@@ -32,7 +32,7 @@ class MyQueue:
 
 class MarketEnv(gym.Env):
 
-    def __init__(self, data: DataSet, config: dict):
+    def __init__(self, datasets: List[DataSet], config: dict):
         config_keys = ["MEAN_RUN_DURATION", "STD_RUN_DURATION", "START_BALANCE", "PREVIOUS_DATA_POINTS_AMOUNT", "MAX_BUY_LIMIT"]
         assert all(k in config for k in config_keys)
 
@@ -46,7 +46,8 @@ class MarketEnv(gym.Env):
         self.stocks_owned = 0
         self.previous_prices = MyQueue(self.PREVIOUS_DATA_POINTS_AMOUNT)
         self.current_price = None
-        self.dataset = data
+        self.datasets = datasets
+        self.current_dataset = None
 
         self.observation_space = gym.spaces.Dict({
                 "current_price": gym.spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32), # previous prices + current price, starting from the oldest
@@ -70,10 +71,10 @@ class MarketEnv(gym.Env):
         return {"portfolio_value": self.get_portfolio_value()}
     
     def get_current_price(self):
-        return self.dataset[self.current_increment + self.start_index].price()
+        return self.current_dataset[self.current_increment + self.start_index].price()
     
     def get_portfolio_value(self):
-        return self.current_price * self.stocks_owned + self.balance
+        return float(self.current_price * self.stocks_owned + self.balance)
     
     def define_action_space(self):
         low = int(-self.stocks_owned)
@@ -85,15 +86,18 @@ class MarketEnv(gym.Env):
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
 
+        randint = np.random.randint(0, len(self.datasets))
+        self.current_dataset = self.datasets[randint]
+
         if self.MEAN_RUN_DURATION and self.STD_RUN_DURATION:
             self.run_duration = round(self.np_random.normal(self.MEAN_RUN_DURATION, self.STD_RUN_DURATION, size=None))
-
+            self.run_duration = min(len(self.current_dataset), self.run_duration)
             assert isinstance(self.run_duration, int)
 
             # Choose the data point to start from
-            self.start_index = self.np_random.integers(0, len(self.dataset) - self.run_duration, size=None, dtype=np.int32)
+            self.start_index = self.np_random.integers(0, len(self.current_dataset) - self.run_duration, size=None, dtype=np.int32)
         else:
-            self.run_duration = len(self.dataset)
+            self.run_duration = len(self.datasets)
             self.start_index = 0
 
         self.current_increment = 0
@@ -128,8 +132,6 @@ class MarketEnv(gym.Env):
         old_action = action
         action = self.clip_action(action)
         truncated = bool(old_action != action)
-
-        assert self.MAX_BUY_LIMIT or not truncated
 
         # Update balance and stocks owned
         self.balance -= action * self.current_price
