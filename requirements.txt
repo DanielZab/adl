@@ -5,5 +5,5 @@ pytest==8.3.4
 pytorch_lightning==2.4.0
 Requests==2.32.3
 serpapi==0.1.5
-torch==2.5.1+cu121
+torch==2.5.1
 tqdm==4.66.4
