@@ -3,62 +3,111 @@ from typing import Union, Tuple, Callable, Iterable
 import torch
 from torch import nn
 from torch.utils.data import IterableDataset
-from torch.distributions import Categorical, Normal
+from torch.distributions import Categorical, Normal, TransformedDistribution, AffineTransform
 import logging
 
 # Source: https://github.com/sidhantls/ppo_lightning
 
 class RNNModel(nn.Module):
-    def __init__(self, rec_input_size, fc1_input_size, rec_hidden_size, fc1_hidden_sizes, fc2_hidden_sizes, rec_num_layers=2, rec_nonlinearity="tanh", fc1_nonlinearity="tanh", fc2_nonlinearity="tanh", rnn_type='RNN', dropout=0.0):
+    def __init__(self, input_size, output_size, rec_hidden_size, fc_hidden_sizes, rec_num_layers=2, rec_nonlinearity="tanh", fc_nonlinearity="tanh", rnn_type='RNN', dropout=0.0):
         super(RNNModel, self).__init__()
+
+        self.input_size = input_size
+        self.output_size = output_size
+        self.rec_num_layers = rec_num_layers
+        self.rnn_type = rnn_type
+
+        self.rec_hidden_size = rec_hidden_size
 
         # Choose RNN type: RNN, LSTM, or GRU
         if rnn_type == 'RNN':
-            self.rnn = nn.RNN(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+            self.rnn = nn.RNN(input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=False)
         elif rnn_type == 'LSTM':
-            self.rnn = nn.LSTM(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+            self.rnn = nn.LSTM(input_size, rec_hidden_size, rec_num_layers, dropout=dropout, batch_first=False)
         elif rnn_type == 'GRU':
-            self.rnn = nn.GRU(rec_input_size, rec_hidden_size, rec_num_layers, nonlinearity=rec_nonlinearity, dropout=dropout, batch_first=True)
+            self.rnn = nn.GRU(input_size, rec_hidden_size, rec_num_layers, dropout=dropout, batch_first=False)
         else:
             raise ValueError(f"Unsupported RNN type: {rnn_type}")
         
-        if fc1_nonlinearity == "tanh":
-            self.fc1_nonlinearity = nn.Tanh
-        elif fc1_nonlinearity == "sigmoid":
-            self.fc1_nonlinearity = nn.Sigmoid
-        elif fc1_nonlinearity == "relu":
-            self.fc1_nonlinearity = nn.ReLU
+        if fc_nonlinearity == "tanh":
+            self.fc_nonlinearity = nn.Tanh
+        elif fc_nonlinearity == "sigmoid":
+            self.fc_nonlinearity = nn.Sigmoid
+        elif fc_nonlinearity == "relu":
+            self.fc_nonlinearity = nn.ReLU
         else:
-            raise ValueError(f"Unsupported non-recurrent nonlinearity: {fc1_nonlinearity}")
+            raise ValueError(f"Unsupported non-recurrent nonlinearity: {fc_nonlinearity}")
+
+        fc_layers = []
         
-        if fc2_nonlinearity == "tanh":
-            self.fc2_nonlinearity = nn.Tanh
-        elif fc2_nonlinearity == "sigmoid":
-            self.fc2_nonlinearity = nn.Sigmoid
-        elif fc2_nonlinearity == "relu":
-            self.fc2_nonlinearity = nn.ReLU
+        fc_layers.append(nn.Linear(rec_hidden_size + self.input_size, fc_hidden_sizes[0]))
+        fc_layers.append(self.fc_nonlinearity())
+
+        for i in range(len(fc_hidden_sizes)-1):
+            fc_layers.append(nn.Linear(fc_hidden_sizes[i], fc_hidden_sizes[i+1]))
+            fc_layers.append(self.fc_nonlinearity())
+        
+        fc_layers.append(nn.Linear(fc_hidden_sizes[-1], output_size))
+
+        self.fc = nn.Sequential(*fc_layers)
+
+    def forward(self, x, hn):
+        if self.rnn_type == 'LSTM':
+            hn = (hn[0].to(x.device), hn[1].to(x.device))
         else:
-            raise ValueError(f"Unsupported non-recurrent nonlinearity: {fc1_nonlinearity}")
+            hn = hn.to(x.device)
 
-        fc1_layers = []
-        
-        fc1_layers.append(nn.Linear(rec_hidden_size + fc1_input_size, fc1_hidden_sizes[0]))
-        fc1_layers.append(self.fc1_nonlinearity())
+        if len(x.shape) == 1:
+            batch_size = 1
+        else:
+            if self.rnn_type == 'LSTM':
+                hn = (hn[0].transpose(0, 1).contiguous(), hn[1].transpose(0, 1).contiguous())
+            else:
+                hn = hn.transpose(0, 1).contiguous()
+            batch_size = x.shape[0]
+        output, hn = self.rnn(torch.unsqueeze(x, 0), hn)
 
-        for i in range(len(fc1_hidden_sizes)-1):
-            fc1_layers.append(nn.Linear(fc1_hidden_sizes[i], fc1_hidden_sizes[i+1]))
-            fc1_layers.append(self.fc1_nonlinearity())
+        if batch_size == 1:
+            assert output.shape == (1, self.rec_hidden_size)
+        else:
+            assert output.shape == (1, batch_size, self.rec_hidden_size)
 
-        nn.Linear(rec_hidden_size + fc1_hidden_sizes[-1], fc2_hidden_sizes[0])
-        self.fc1 = nn.Sequential(*fc1_layers)
+        output = torch.squeeze(output)
 
-        fc2_layers = []
+        if batch_size == 1:
+            assert output.shape == (self.rec_hidden_size,)
+        else:
+            assert output.shape == (batch_size, self.rec_hidden_size)
 
-        for i in range(fc2_hidden_sizes - 1):
-            fc2_layers.append(nn.Linear(fc2_hidden_sizes[i], fc2_hidden_sizes[i+1]))
-            fc2_layers.append(self.fc2_nonlinearity())
-        
-        fc2_layers.append(nn.Linear(fc2_hidden_sizes[-1], 1))
+        output = torch.cat((output, x), dim=-1)
+
+        if batch_size == 1:
+            assert output.shape == (self.rec_hidden_size + self.input_size,)
+        else:    
+            assert output.shape == (batch_size, self.rec_hidden_size + self.input_size)
+
+        output = self.fc(output)
+
+        if batch_size == 1:
+            assert output.shape == (self.output_size,)
+        else:
+            assert output.shape == (batch_size, self.output_size)
+
+        return output, hn
+
+    def init_hidden(self, batch_size):
+        if isinstance(self.rnn, nn.LSTM):
+            first = torch.squeeze(torch.zeros(self.rec_num_layers, batch_size, self.rec_hidden_size))
+            second = torch.squeeze(torch.zeros(self.rec_num_layers, batch_size, self.rec_hidden_size))
+            if len(first.shape) < 2:
+                first = torch.unsqueeze(first, 0)
+                second = torch.unsqueeze(second, 0)
+            return first, second
+        else:
+            temp = torch.squeeze(torch.zeros(self.rec_num_layers, batch_size, self.rec_hidden_size))
+            if len(temp.shape) < 2:
+                temp = torch.unsqueeze(temp, 0)
+            return temp
 
 
 def create_mlp(input_shape: Tuple[int], n_actions: int, hidden_sizes: list = [128, 128]):
@@ -85,7 +134,7 @@ class ActorCategorical(nn.Module):
     and an action given an observation
     """
 
-    def __init__(self, actor_net):
+    def __init__(self, actor_net: RNNModel):
         """
         Args:
             input_shape: observation shape of the environment
@@ -95,12 +144,13 @@ class ActorCategorical(nn.Module):
 
         self.actor_net = actor_net
 
-    def forward(self, states):
-        logits = self.actor_net(states)
+    def forward(self, states, hn):
+        logits, hn = self.actor_net(states, hn)
         pi = Categorical(logits=logits)
-        actions = pi.sample()
+        pi = TransformedDistribution(pi, AffineTransform(loc=-(self.actor_net.output_size//2), scale=1.0))
+        actions = pi.sample().type(torch.int32)
 
-        return pi, actions
+        return pi, actions, hn
 
     def get_log_prob(self, pi: Categorical, actions: torch.Tensor):
         """
@@ -132,13 +182,13 @@ class ActorContinous(nn.Module):
         log_std = -0.5 * torch.ones(act_dim, dtype=torch.float)
         self.log_std = torch.nn.Parameter(log_std)
 
-    def forward(self, states):
-        mu = self.actor_net(states)
+    def forward(self, states, hn):
+        mu, hn = self.actor_net(states, hn)
         std = torch.exp(self.log_std)
         pi = Normal(loc=mu, scale=std)
         actions = pi.sample()
 
-        return pi, actions
+        return pi, actions, hn
 
     def get_log_prob(self, pi: Normal, actions: torch.Tensor):
         """
@@ -164,7 +214,7 @@ class ActorCriticAgent(object):
         self.critic_net = critic_net
 
     @torch.no_grad()
-    def __call__(self, state: torch.Tensor, device: str) -> Tuple:
+    def __call__(self, state: torch.Tensor, device: str, hn_actor, hn_critic) -> Tuple:
         """
         Takes in the current state and returns the agents policy, sampled
         action, log probability of the action, and value of the given state
@@ -177,12 +227,12 @@ class ActorCriticAgent(object):
 
         state = state.to(device=device)
 
-        pi, actions = self.actor_net(state)
+        pi, actions, hn_a = self.actor_net(state, hn_actor)
         log_p = self.get_log_prob(pi, actions)
 
-        value = self.critic_net(state)
+        value, hn_c = self.critic_net(state, hn_critic)
 
-        return pi, actions, log_p, value
+        return pi, actions, log_p, value, hn_a, hn_c
 
     def get_log_prob(self,
                      pi: Union[Categorical, Normal],

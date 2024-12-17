@@ -2,7 +2,7 @@ import pytest
 import logging, os, glob
 import datetime
 
-from dataset_container import DataSet, DataPoint
+from dataset.containers import DataSet, DataPoint
 from util import extract_tickers, extract_from_pickle
 
 

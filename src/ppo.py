@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import pytorch_lightning as pl
-from network import create_mlp, ActorCriticAgent, ActorCategorical, ActorContinous
+from network import create_mlp, ActorCriticAgent, ActorCategorical, ActorContinous, RNNModel
 
 import torch
 from torch.utils.data import DataLoader
@@ -10,6 +10,7 @@ import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 
 import gymnasium as gym
+from environment import Config
 
 
 class PPO(pl.LightningModule):
@@ -32,7 +33,7 @@ class PPO(pl.LightningModule):
     def __init__(
         self,
         env: gym.Env,
-        prev_data_points: int,
+        config: Config,
         gamma: float = 0.99,
         lam: float = 0.95,
         lr_actor: float = 3e-4,
@@ -42,6 +43,13 @@ class PPO(pl.LightningModule):
         steps_per_epoch: int = 2048,
         nb_optim_iters: int = 4,
         clip_ratio: float = 0.2,
+        rec_hidden_size: int = 128,
+        fc_hidden_sizes: int = [128, 128],
+        rec_num_layers: int = 2,
+        rec_nonlinearity: str = "tanh",
+        fc_nonlinearity: str = "tanh",
+        rnn_type: str = 'RNN',
+        dropout: float = 0.0
     ) -> None:
 
         """
@@ -71,20 +79,31 @@ class PPO(pl.LightningModule):
         self.lam = lam
         self.max_episode_len = max_episode_len
         self.clip_ratio = clip_ratio
+        self.rec_hidden_size = rec_hidden_size
+        self.fc_hidden_sizes = fc_hidden_sizes
+        self.rec_num_layers = rec_num_layers
+        self.rec_nonlinearity = rec_nonlinearity
+        self.fc_nonlinearity = fc_nonlinearity
+        self.rnn_type = rnn_type
+        self.dropout = dropout
+        self.config = config
         self.save_hyperparameters()
 
         self.env = env
 
         # value network
-        self.critic = create_mlp(4 + prev_data_points, 1)
+        self.critic = RNNModel(input_size=4, output_size=1, rec_hidden_size=rec_hidden_size, rec_num_layers=rec_num_layers, rec_nonlinearity=rec_nonlinearity, fc_hidden_sizes=fc_hidden_sizes, fc_nonlinearity=fc_nonlinearity, rnn_type=rnn_type, dropout=dropout)
 
         # policy network (agent)
-        #actor_mlp = create_mlp(self.env.observation_space.shape, 1)
-        #self.actor = ActorCategorical(actor_mlp)
 
-        act_dim = self.env.action_space.shape[0]
-        actor_mlp = create_mlp(4 + prev_data_points, act_dim)
-        self.actor = ActorContinous(actor_mlp, act_dim)
+        if not config.CONTINUOUS_MODEL:
+            actor_mlp = RNNModel(input_size=4, output_size=2*config.MAX_BUY_LIMIT + 1, rec_hidden_size=rec_hidden_size, rec_num_layers=rec_num_layers, rec_nonlinearity=rec_nonlinearity, fc_hidden_sizes=fc_hidden_sizes, fc_nonlinearity=fc_nonlinearity, rnn_type=rnn_type, dropout=dropout)
+            self.actor = ActorCategorical(actor_mlp)
+        else: 
+            act_dim = self.env.action_space.shape[0]
+            assert act_dim == 1, "Only single action dimension supported for continuous action space"
+            actor_mlp = RNNModel(input_size=4, output_size=act_dim, rec_hidden_size=rec_hidden_size, rec_num_layers=rec_num_layers, rec_nonlinearity=rec_nonlinearity, fc_hidden_sizes=fc_hidden_sizes, fc_nonlinearity=fc_nonlinearity, rnn_type=rnn_type, dropout=dropout)
+            self.actor = ActorContinous(actor_mlp, act_dim)
 
         # agent
         self.agent = ActorCriticAgent(self.actor, self.critic)
@@ -94,15 +113,23 @@ class PPO(pl.LightningModule):
         self.batch_adv = []
         self.batch_qvals = []
         self.batch_logp = []
+        self.hns_actor = []
+        self.hns_critic = []
 
         self.ep_rewards = []
         self.ep_values = []
         self.epoch_rewards = []
+        self.portfolio_values = []
 
         self.episode_step = 0
         self.avg_ep_reward = 0
         self.avg_ep_len = 0
         self.avg_reward = 0
+        self.avg_portofolio_value = 0
+        self.max_portfolio_value = 0
+
+        self.hn_actor = self.actor.actor_net.init_hidden(1)
+        self.hn_critic = self.critic.init_hidden(1)
 
         self.state = self.convert_state_to_tensor(self.env.reset())
 
@@ -114,10 +141,10 @@ class PPO(pl.LightningModule):
         Returns:
             Tuple of policy and action
         """
-        pi, action = self.actor(x)
-        value = self.critic(x)
+        pi, action, hn_a = self.actor(x, self.hn_actor)
+        value, hn_c = self.critic(x, self.hn_critic)
 
-        return pi, action, value
+        return pi, action, value, hn_a, hn_c
 
     def convert_state_to_tensor(self, state: tuple) -> torch.Tensor:
         assert isinstance(state, tuple) and len(state) == 2
@@ -128,11 +155,10 @@ class PPO(pl.LightningModule):
         current_price = float(obs["current_price"])
         balance = float(obs["balance"])
         stocks_owned = float(obs["stocks_owned"])
-        previous_prices = list(obs["previous_prices"])
 
         portfolio_value = float(info["portfolio_value"])
 
-        return torch.FloatTensor([current_price, balance, stocks_owned, portfolio_value] + previous_prices)
+        return torch.log2(torch.FloatTensor([current_price, balance, stocks_owned, portfolio_value]) + 1e-8)
 
     def discount_rewards(self, rewards: List[float], discount: float) -> List[float]:
         """Calculate the discounted rewards of all rewards in list
@@ -192,7 +218,7 @@ class PPO(pl.LightningModule):
         """
 
         for step in range(self.steps_per_epoch):
-            pi, action, log_prob, value = self.agent(self.state, self.device)
+            pi, action, log_prob, value, self.hn_actor, self.hn_critic = self.agent(self.state, self.device, self.hn_actor, self.hn_critic)
             obs, reward, done, info = self.env.step(action.cpu().numpy())
 
             reward = self.normalize_rewards(reward)
@@ -204,6 +230,8 @@ class PPO(pl.LightningModule):
             self.batch_states.append(self.state)
             self.batch_actions.append(action)
             self.batch_logp.append(log_prob)
+            self.hns_actor.append(self.hn_actor)
+            self.hns_critic.append(self.hn_critic)
 
             self.ep_rewards.append(reward)
             self.ep_values.append(value.item())
@@ -218,7 +246,7 @@ class PPO(pl.LightningModule):
                 # if trajectory ends abtruptly, boostrap value of next state
                 if (terminal or epoch_end) and not done:
                     with torch.no_grad():
-                        _, _, _, value = self.agent(self.state, self.device)
+                        _, _, _, value, self.hn_actor, self.hn_critic = self.agent(self.state, self.device, self.hn_actor, self.hn_critic)
                         last_value = value.item()
                         steps_before_cutoff = self.episode_step
                 else:
@@ -231,25 +259,32 @@ class PPO(pl.LightningModule):
                 self.batch_adv += self.calc_advantage(self.ep_rewards, self.ep_values, last_value)
                 # logs
                 self.epoch_rewards.append(sum(self.ep_rewards))
+                self.portfolio_values.append(info["portfolio_value"])
                 # reset params
                 self.ep_rewards = []
                 self.ep_values = []
                 self.episode_step = 0
+
+                self.hn_actor = self.actor.actor_net.init_hidden(1)
+                self.hn_critic = self.critic.init_hidden(1)
+
                 self.state = self.convert_state_to_tensor(self.env.reset())
 
             if epoch_end:
                 train_data = zip(
                     self.batch_states, self.batch_actions, self.batch_logp,
-                    self.batch_qvals, self.batch_adv)
+                    self.batch_qvals, self.batch_adv, self.hns_actor, self.hns_critic)
 
-                for state, action, logp_old, qval, adv in train_data:
-                    yield state, action, logp_old, qval, adv
+                for state, action, logp_old, qval, adv, hn_a, hn_c in train_data:
+                    yield state, action, logp_old, qval, adv, hn_a, hn_c
 
                 self.batch_states.clear()
                 self.batch_actions.clear()
                 self.batch_adv.clear()
                 self.batch_logp.clear()
                 self.batch_qvals.clear()
+                self.hns_actor.clear()
+                self.hns_critic.clear()
 
                 # logging
                 self.avg_reward = sum(self.epoch_rewards) / self.steps_per_epoch
@@ -262,21 +297,25 @@ class PPO(pl.LightningModule):
                 total_epoch_reward = sum(epoch_rewards)
                 nb_episodes = len(epoch_rewards)
 
+                self.avg_portofolio_value = sum(self.portfolio_values) / len(self.portfolio_values)
+                self.max_portfolio_value = max(self.portfolio_values)
+
                 self.avg_ep_reward = total_epoch_reward / nb_episodes
                 self.avg_ep_len = (self.steps_per_epoch - steps_before_cutoff) / nb_episodes
 
                 self.epoch_rewards.clear()
+                self.portfolio_values.clear()
 
-    def actor_loss(self, state, action, logp_old, qval, adv) -> torch.Tensor:
-        pi, _ = self.actor(state)
+    def actor_loss(self, state, hn, action, logp_old, qval, adv) -> torch.Tensor:
+        pi, _, _ = self.actor(state, hn)
         logp = self.actor.get_log_prob(pi, action)
         ratio = torch.exp(logp - logp_old)
         clip_adv = torch.clamp(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio) * adv
         loss_actor = -(torch.min(ratio * adv, clip_adv)).mean()
         return loss_actor
 
-    def critic_loss(self, state, action, logp_old, qval, adv) -> torch.Tensor:
-        value = self.critic(state)
+    def critic_loss(self, state, hn, action, logp_old, qval, adv) -> torch.Tensor:
+        value, _ = self.critic(state, hn)
         loss_critic = (qval - value).pow(2).mean()
         return loss_critic
 
@@ -291,32 +330,31 @@ class PPO(pl.LightningModule):
         Returns:
             loss
         """
-        state, action, old_logp, qval, adv = batch
+        state, action, old_logp, qval, adv, hn_a, hn_c = batch
 
         a_opt, c_opt = self.optimizers()
 
         # normalize advantages
         adv = (adv - adv.mean())/adv.std()
 
-        self.log("max_portfolio_value", torch.max(state[:,3]), prog_bar=True, on_step=True, on_epoch=True)
-        self.log("avg_ep_len", self.avg_ep_len, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("avg_ep_reward", self.avg_ep_reward, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("avg_reward", self.avg_reward, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("avg_reward_atanh", torch.atanh(self.avg_reward), prog_bar=True, on_step=False, on_epoch=True)
+        self.log("max_portfolio_value", self.max_portfolio_value, prog_bar=True, on_step=False, on_epoch=True, logger=True)
+        self.log("avg_portfolio_value", self.avg_portofolio_value, prog_bar=True, on_step=False, on_epoch=True, logger=True)
+        self.log("avg_ep_len", self.avg_ep_len, prog_bar=True, on_step=False, on_epoch=True, logger=True)
+        self.log("avg_ep_reward", self.avg_ep_reward, prog_bar=True, on_step=False, on_epoch=True, logger=True)
+        self.log("avg_reward", self.avg_reward, prog_bar=False, on_step=False, on_epoch=True, logger=True)
+        self.log("avg_reward_atanh", torch.atanh(torch.tensor(self.avg_reward, dtype=torch.float32)), prog_bar=True, on_step=False, on_epoch=True, logger=True)
 
         a_opt.zero_grad()
-        loss_actor = self.actor_loss(state, action, old_logp, qval, adv)
+        loss_actor = self.actor_loss(state, hn_a, action, old_logp, qval, adv)
         self.log('loss_actor', loss_actor, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.manual_backward(loss_actor)
         a_opt.step()
 
-        
         c_opt.zero_grad()
-        loss_critic = self.critic_loss(state, action, old_logp, qval, adv)
-        self.log('loss_critic', loss_critic, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        loss_critic = self.critic_loss(state, hn_c, action, old_logp, qval, adv)
+        self.log('loss_critic', loss_critic, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.manual_backward(loss_critic)
         c_opt.step()
-        self.log_dict({"a_loss": loss_actor, "c_loss": loss_critic}, prog_bar=True)
 
     def configure_optimizers(self) -> List[Optimizer]:
         """ Initialize Adam optimizer"""
@@ -343,10 +381,9 @@ class PPO(pl.LightningModule):
         """Get train loader"""
         return self._dataloader()
     
-    def make_move(self, state: tuple, device=None) -> int:
+    def make_move(self, state: tuple, hn, device=None) -> int:
         if device:
             self.to(device)
         state = self.convert_state_to_tensor(state)
-        self.eval()
-        pi, action = self.actor(state)
-        return action
+        pi, action, hn = self.actor(state, hn)
+        return action, hn

@@ -1,7 +1,9 @@
-from dataset_container import DataSet, DataPoint
 import glob, os, json, pickle
-
-DATA_PATH = os.path.join('..', 'data')
+import datetime
+from typing import List
+import logging
+from constants import PICKLES_PATH, DATA_PATH
+from dataset.containers import DataSet
 
 def save_to_pickle(data, path):
     with open(path, "wb") as f:
@@ -24,3 +26,25 @@ def extract_tickers(container: DataSet, symbol: str) -> DataSet:
     for f in sorted_files:
         extract_from_json(container, f)
     return container
+
+def get_datasets():
+
+    datasets = list(glob.glob(os.path.join(PICKLES_PATH, "*.pkl")))
+
+    datasets: List[DataSet] = list([extract_from_pickle(dataset) for dataset in datasets])
+
+    assert all(isinstance(dataset, DataSet) for dataset in datasets)
+    return datasets
+
+def get_train_validate_test_datasets(datasets: List[DataSet], timestamp1: datetime.datetime = datetime.datetime(2024, 1, 1), timestamp2: datetime.datetime = datetime.datetime(2024, 7, 1)):
+    train_sets = []
+    validation_sets = []
+    test_sets = []
+
+    for dataset in datasets:
+        train_set, validation_set, test_set = dataset.train_validation_test_split(timestamp1, timestamp2)
+        train_sets.append(train_set)
+        validation_sets.append(validation_set)
+        test_sets.append(test_set)
+        logging.debug(f"Train set length: {len(train_set)}, Validation set length: {len(validation_set)}, Test set length: {len(test_set)}")
+    return train_sets, validation_sets, test_sets

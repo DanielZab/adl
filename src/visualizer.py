@@ -1,7 +1,8 @@
 import datetime
 import matplotlib.pyplot as plt
+import numpy as np
 
-from dataset_container import DataSet
+from dataset.containers import DataSet
 
 class MonthYearContainer:
     def __init__(self, month: int, year: int):
@@ -73,4 +74,49 @@ class Visualizer:
         plt.figure(figsize=(12, 6))
         plt.title("Price History of " + data.name)
         plt.plot(x, y)
+        plt.show()
+
+    @staticmethod
+    def plot_traces(traces: list):
+
+        # Create a 2x4 grid of subplots
+        fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 6))
+        # Titles for each subplot
+        titles = [
+            "Rewards", "Actions", "current price", "balance",
+            "stocks_owned", "portfolio_value"
+        ]
+        # Flatten the axes array to make it easier to iterate
+        axes = axes.flatten()
+
+        # Optional: Remove ticks for clarity
+        #ax.tick_params(axis='both', which='both', length=0)
+
+        for nr, states, actions, rewards in traces:
+            
+            x = rewards
+            axes[0].plot(x, label=f"Version {nr}")
+
+            x = actions
+            axes[1].plot(x, label=f"Version {nr}")
+
+            x = [e[0]["current_price"] for e in states]
+            axes[2].plot(x, label=f"Version {nr}")
+
+            x = [e[0]["balance"] for e in states]
+            axes[3].plot(x, label=f"Version {nr}")
+
+            x = [e[0]["stocks_owned"] for e in states]
+            axes[4].plot(x, label=f"Version {nr}")
+
+            x = [e[1]["portfolio_value"] for e in states]
+            axes[5].plot(x, label=f"Version {nr}")
+            
+            
+            
+        axes[-1].legend()
+        res = [axes[i].set_title(t) for i, t in enumerate(titles)]
+        # Adjust layout for better spacing
+        #plt.tight_layout()
+        # Show the plot
         plt.show()
