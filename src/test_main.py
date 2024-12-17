@@ -3,7 +3,7 @@ The main test file for the project. It mostly tests the integrity. On push to th
 '''
 import datetime
 import glob
-import gym
+from gymnasium import gym
 import logging
 import os
 import pytest
