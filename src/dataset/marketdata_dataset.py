@@ -2,8 +2,8 @@
 This class was not used for the final implementation of the project
 """
 
-import requests
 import os
+import requests
 
 session = requests.Session()
 
@@ -26,7 +26,10 @@ date: date, The date of the candles to be returned. If no date is specified, dur
 
 adjustsplits: boolean, Adjust historical data for for historical splits and reverse splits. Market Data uses the CRSP methodology for adjustment. Daily candles default: true.
 '''
-def bulk_candles(resolution: str, symbols: list, snapshot: bool | None = None, date: str | None = None, adjustsplits: bool | None = None):
+
+
+def bulk_candles(resolution: str, symbols: list, snapshot: bool | None = None, date: str | None = None,
+                 adjustsplits: bool | None = None):
     symbols = ",".join(symbols)
     url = f"https://api.marketdata.app/v1/stocks/bulkcandles/{resolution}/?symbols={symbols}"
 
@@ -55,6 +58,8 @@ extended: boolean, Control the inclusion of extended hours data in the quote out
 When set to true, the most recent quote is always returned, without regard to whether the market is open for primary trading or extended hours trading.
 When set to false, only quotes from the primary trading session are returned. When the market is closed or in extended hours, a historical quote from the last closing bell of the primary trading session is returned instead of an extended hours quote.
 '''
+
+
 def bulk_quotes(symbols: list, snapshot: bool | None = None, extended: bool | None = None):
     symbols = ",".join(symbols)
 

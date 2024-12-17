@@ -1,6 +1,7 @@
-from typing import List, Union
-import logging
 import datetime
+import logging
+from typing import List, Union, Tuple, Self
+
 
 class DataPoint:
     '''
@@ -8,6 +9,7 @@ class DataPoint:
 
     See: https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
     '''
+
     #
     def __init__(self, data: dict):
         assert set(data.keys()) == {"v", "vw", "o", "c", "h", "l", "t", "n"}
@@ -22,7 +24,7 @@ class DataPoint:
             return self.t < other.timestamp() * 1000
 
         return self.t < other.t
-    
+
     def __gt__(self, other):
         '''
         Define the > operator for DataPoint objects. Compares the timestamp of the DataPoint objects, in order to make sorting by timestamp easier.
@@ -32,27 +34,29 @@ class DataPoint:
             return self.t > other.timestamp() * 1000
 
         return self.t > other.t
-    
+
     def __str__(self):
         msg = "DataPoint {"
         for k, v in self.__dict__.items():
             msg += f"{k}: {v}, "
         return msg[:-2] + "}"
-    
+
     def __repr__(self):
         return str(self)
-    
+
     def price(self):
         return self.o
+
 
 class DataSet:
     '''
     Contains a ordered list of DataPoint objects. Can be used to store the data of a stock over time.
     '''
+
     def __init__(self, name: str, data_points: Union[List[DataPoint], List[dict]] = []):
         '''
-        name: str - The name of the DataSet
-        data_points: List[DataPoint] | List[dict]- The list of DataPoint objects that make up the DataSet, must be already sorted by timestamp
+        name: The name of the DataSet
+        data_points: The list of DataPoint objects that make up the DataSet, must be already sorted by timestamp
         '''
         self.name = name
 
@@ -61,12 +65,14 @@ class DataSet:
         else:
             self.data_points = list(map(lambda x: DataPoint(x), data_points))
 
-    def insert(self, data_point: Union[DataPoint, List[DataPoint], dict, List[dict]]):
+    def insert(self, data_point: Union[DataPoint, List[DataPoint], dict, List[dict]]) -> None:
         '''
         Inserts a DataPoint object or a list thereof into the DataSet. The DataPoint object is inserted in the correct order.
         For complexity reasons, this method first tries to insert the DataPoint at the end of the list.
+
+        data_point: The DataPoint(s) to insert into the DataSet
         '''
-        
+
         # If the input is a list, insert each element of the list individually
         if isinstance(data_point, list):
             for dp in data_point:
@@ -91,31 +97,32 @@ class DataSet:
                 if self.data_points[i] > data_point:
                     self.data_points.insert(i, data_point)
                     break
-    
+
     def __str__(self):
         msg = "DataSet {" + ",\n".join(map(str, self.data_points)) + "}"
         return msg
-    
+
     def __repr__(self):
         return str(self)
 
     def __getitem__(self, key):
         return self.data_points[key]
-    
+
     def __len__(self):
         return len(self.data_points)
-    
-    def train_validation_test_split(self, split_date1: datetime.datetime, split_date2: datetime.datetime):
+
+    def train_validation_test_split(self, split_date1: datetime.datetime, split_date2: datetime.datetime) -> Tuple[
+        Self, Self, Self]:
         '''
         Split the DataSet into three parts: training, validation and test set. The split is done by the given dates.
 
-        split_date1: datetime.datetime - The date that separates the training and validation set
-        split_date2: datetime.datetime - The date that separates the validation and test set
+        split_date1: The date that separates the training and validation set
+        split_date2: The date that separates the validation and test set
         '''
         assert split_date1 < split_date2
         assert self.data_points[0] < split_date1
         assert self.data_points[-1] > split_date2
-    
+
         index1 = -1
         index2 = -1
         for i, e in enumerate(self.data_points):
@@ -125,8 +132,6 @@ class DataSet:
                 index2 = i
                 break
         assert index1 != -1 and index2 != -1
-        return DataSet(self.name, self.data_points[:index1]), DataSet(self.name, self.data_points[index1:index2]), DataSet(self.name, self.data_points[index2:])
-                
-    
-
-
+        return DataSet(self.name, self.data_points[:index1]), DataSet(self.name,
+                                                                      self.data_points[index1:index2]), DataSet(
+            self.name, self.data_points[index2:])
