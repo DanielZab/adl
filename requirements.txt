@@ -1,6 +1,6 @@
 gymnasium==1.0.0
 matplotlib==3.8.2
-numpy==2.2.0
+numpy==1.21.0
 pytest==8.3.4
 pytorch_lightning==2.4.0
 Requests==2.32.3
