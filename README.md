@@ -76,6 +76,8 @@ Sadly, the agent does not yet achieve this goal. However, I believe more trainin
 
 ## Demo Setup
 
+Note that for the installation the python version 3.11 is needed
+
 ### Frontend
 
 Run `npm install` in the frontend directory, to install the necessary node modules
@@ -86,7 +88,7 @@ Run `npm run dev` to start the frontend
 
 Install the necessary python dependencies
 
-Run `python -m uvicorn backend:app --reload --host 0.0.0.0 --port 8000` to start the backend server
+Run `python -m uvicorn backend:app --reload --host 0.0.0.0 --port 8000` in the src directory to start the backend server
 
 ### Alternative method
 

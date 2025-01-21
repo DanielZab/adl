@@ -27,7 +27,7 @@ DEFAULT_TIMESPAN = "minute"
 
 
 def store_stock(ticker: str, multiplier: str = DEFAULT_MULTIPLIER, timespan: str = DEFAULT_TIMESPAN,
-                start_date: str = DEFAULT_START_DATE, end_date: str = DEFAULT_END_DATE) ->:
+                start_date: str = DEFAULT_START_DATE, end_date: str = DEFAULT_END_DATE):
     '''
     Gets the stock data for the given ticker as candles and stores it in a folder with the ticker name
 

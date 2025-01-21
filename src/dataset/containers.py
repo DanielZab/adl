@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import List, Union, Tuple, Self
+from typing import List, Union, Tuple
 
 
 class DataPoint:
@@ -115,7 +115,7 @@ class DataSet:
 
     def train_validation_test_split(
         self, split_date1: datetime.datetime, split_date2: datetime.datetime
-    ) -> Tuple[Self, Self, Self]:
+    ) -> Tuple:
         """
         Split the DataSet into three parts: training, validation and test set. The split is done by the given dates.
 
