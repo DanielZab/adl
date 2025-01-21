@@ -72,3 +72,22 @@ As predicting future stock prices can prove to be quite challenging, I did set t
 Sadly, the agent does not yet achieve this goal. However, I believe more training time and further random search might improve the models to achieve the desired results. 
 
 
+# Task 3
+
+## Demo Setup
+
+### Frontend
+
+Run `npm install` in the frontend directory, to install the necessary node modules
+
+Run `npm run dev` to start the frontend
+
+### Backend
+
+Install the necessary python dependencies
+
+Run `python -m uvicorn backend:app --reload --host 0.0.0.0 --port 8000` to start the backend server
+
+### Alternative method
+
+If all dependencies are installed, you can just execute the `start.bat` file

@@ -1,6 +1,6 @@
-'''
+"""
 The main test file for the project. It mostly tests the integrity. On push to the main branch of the repository, the tests are run on the CI pipeline.
-'''
+"""
 import datetime
 import glob
 import gymnasium as gym
@@ -10,7 +10,12 @@ import pytest
 
 from dataset.containers import DataSet, DataPoint
 from environment import Config, MarketEnv
-from util import extract_tickers, extract_from_pickle, get_datasets, get_train_validate_test_datasets
+from util import (
+    extract_tickers,
+    extract_from_pickle,
+    get_datasets,
+    get_train_validate_test_datasets,
+)
 
 DATA_PATH = os.path.join(".", "data")
 DATASET_PATH = os.path.join(DATA_PATH, "AAPL")
@@ -22,7 +27,10 @@ def test_dataset_entries_are_chronological():
     data = extract_tickers(DataSet("AAPL"), "AAPL")
 
     for i in range(len(data) - 1):
-        assert 't' in (data.data_points[i]).__dict__.keys() and 't' in data.data_points[i + 1].__dict__.keys()
+        assert (
+            "t" in (data.data_points[i]).__dict__.keys()
+            and "t" in data.data_points[i + 1].__dict__.keys()
+        )
         assert data.data_points[i] < data.data_points[i + 1]
         assert data.data_points[i].t < data.data_points[i + 1].t
 
@@ -54,7 +62,7 @@ def test_environment_run_does_not_crash():
         MAX_BUY_LIMIT=10,
         CONTINUOUS_MODEL=True,
         TRUNCATION_PENALTY=0,
-        STOCK_HOLDING_REWARD=1
+        STOCK_HOLDING_REWARD=1,
     )
 
     datasets = list(glob.glob(os.path.join("data", "pickles", "*.pkl")))
@@ -63,9 +71,10 @@ def test_environment_run_does_not_crash():
 
     assert all(isinstance(dataset, DataSet) for dataset in datasets)
 
-
     gym.register("MarketEnv-v0", entry_point=MarketEnv)
-    env = gym.make("MarketEnv-v0", datasets=datasets, config=env_configs, disable_env_checker=True)
+    env = gym.make(
+        "MarketEnv-v0", datasets=datasets, config=env_configs, disable_env_checker=True
+    )
 
     try:
         env.reset(seed=44)

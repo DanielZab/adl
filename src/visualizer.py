@@ -1,6 +1,6 @@
-'''
+"""
 A helper module to visualize data using matplotlib
-'''
+"""
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,9 +9,9 @@ from dataset.containers import DataSet
 
 
 class MonthYearContainer:
-    '''
+    """
     A container for month and year values. Used for efficient sorting and grouping of data.
-    '''
+    """
 
     def __init__(self, month: int, year: int):
         self.month = month
@@ -41,12 +41,11 @@ class MonthYearContainer:
 
 
 class Visualizer:
-
     @staticmethod
     def create_monthly_bins(data: DataSet):
-        '''
+        """
         Creates a dictionary of month-year containers and the number of data points in that month-year container.
-        '''
+        """
         monthly_bins = {}
         for data_point in data.data_points:
             date = datetime.datetime.fromtimestamp(data_point.t / 1000)
@@ -62,9 +61,9 @@ class Visualizer:
 
     @staticmethod
     def plot_monthly_distribution(data: DataSet):
-        '''
+        """
         Plots the monthly distribution of data points in the dataset.
-        '''
+        """
 
         bins = Visualizer.create_monthly_bins(data)
         x = [str(x[0]) for x in bins]
@@ -77,15 +76,15 @@ class Visualizer:
 
         plt.title("Monthly Data Availability of " + data.name)
         plt.bar(x, y)
-        plt.xticks(x, rotation=45, ha='right')
+        plt.xticks(x, rotation=45, ha="right")
 
         plt.show()
 
     @staticmethod
     def plot_price_history(data: DataSet):
-        '''
+        """
         Plots the price history of a dataset.
-        '''
+        """
         x = [datetime.datetime.fromtimestamp(x.t / 1000) for x in data.data_points]
         y = [x.c for x in data.data_points]
 
@@ -97,17 +96,21 @@ class Visualizer:
     @staticmethod
     def plot_traces(traces: list):
 
-        '''
+        """
         Plots data related to the traces of the agent. Plotted are rewards, actions, the current price, the balance, the number of stocks owned, and the portfolio value.
-        '''
+        """
 
         # Create a 2x4 grid of subplots
         fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 6))
 
         # Titles for each subplot
         titles = [
-            "Rewards", "Actions", "current price", "balance",
-            "stocks_owned", "portfolio_value"
+            "Rewards",
+            "Actions",
+            "current price",
+            "balance",
+            "stocks_owned",
+            "portfolio_value",
         ]
 
         # Flatten the axes array to make it easier to iterate
