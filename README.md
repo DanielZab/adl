@@ -7,11 +7,11 @@
 
 ## Project Description
 
-The idea was to create a stock trading bot that is able to buy and sell stocks using Deep Reinforcement Learning or RNNs. My goal is to be able to connect the bot to a broker via an API (e.g. https://www.bybit.com/future-activity/en/developer). I want to experiment with different architectures and settle for the most promising one. The next step is then trying to find ways to improve the architecture or algorithmic details. Although predicting stock prices might prove to be challenging, I view it as a valuable learning experience.
+The idea was to create a stock trading bot that is able to buy and sell stocks using Deep Reinforcement Learning or RNNs. My final goal is to be able to connect the bot to a broker via an API (e.g. https://www.bybit.com/future-activity/en/developer). I want to experiment with different architectures and settle for the most promising one. Although predicting stock prices might prove to be challenging, I view it as a valuable learning experience.
 
 ### Dataset
 
-The dataset will consist of past stock prices, most of which are public knowledge, with one possible dataset source being https://www.marketdata.app/.
+The dataset consists of past stock prices, most of which are public knowledge
 
 ## Model Architecture
 
@@ -19,7 +19,7 @@ After my research, I chose to use an actor-critic network with PPO for this task
 
 The structure of a single network can be seen in ![network structure](./images/network%20structure.png)
 
-The state x is passed to the recurrent network (can be of type RNN, LSTM or GRU) which can contain 1-4 layers. The output of that RNN is then passed to the fully connected network alongside the initial values. The actor-critic structure, where both individually conform to the prior architecture, can be seen in ![actor_critic](./images/actor-critic.png)
+The state x is passed to the recurrent network (can be of type RNN, LSTM or GRU) which can contain 1-4 layers. The output of that RNN is then passed to the fully connected network alongside the initial values. The actor-critic structure, in which both components individually conform to the prior architecture, is illustrated in ![actor_critic](./images/actor-critic.png)
 
 ## Error Metric
 
